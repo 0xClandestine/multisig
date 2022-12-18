@@ -4,6 +4,7 @@ pragma solidity ^0.8.13;
 import "solbase/utils/EIP712.sol";
 
 struct Signature {
+    address signer;
     uint8 v;
     bytes32 r;
     bytes32 s;
@@ -12,10 +13,9 @@ struct Signature {
 struct Tx {
     address payable target;
     uint256 value;
-    address[] signers;
-    Signature[] signatures;
     bytes payload;
     bytes32 nullifier;
+    Signature[] signatures;
 }
 
 contract Multisig is EIP712("Multisig", "1") {
@@ -35,15 +35,17 @@ contract Multisig is EIP712("Multisig", "1") {
     /// Construction
     /// -----------------------------------------------------------------------
 
-    constructor(address[] memory signers) {
+    constructor(address[] memory signers, uint256 _minimumConfirmations) {
         unchecked {
-            for (uint256 i; i < signers.length; ++i) {
+            uint256 _totalSigners = signers.length;
+
+            for (uint256 i; i < _totalSigners; ++i) {
                 ++totalSigners;
 
                 isSigner[signers[i]] = true;
-
-                emit SignersChanged(signers[i], true);
             }
+
+            minimumConfirmations = _minimumConfirmations;
         }
     }
 
@@ -51,18 +53,59 @@ contract Multisig is EIP712("Multisig", "1") {
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
-    // TODO salted contract deployment function
+    error InvalidSignature(address signer);
+
+    function execute(Tx calldata t) external virtual {
+        uint256 signers = t.signatures.length;
+
+        if (signers < minimumConfirmations) revert();
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(t.target, t.value, t.payload, t.nullifier)
+        );
+
+        if (isExecuted[digest]) revert();
+
+        // Incrementing cannot reasonably overflow.
+        unchecked {
+            for (uint256 i; i < signers; ++i) {
+                address signer = t.signatures[i].signer;
+                if (
+                    ecrecover(
+                        digest,
+                        t.signatures[i].v,
+                        t.signatures[i].r,
+                        t.signatures[i].s
+                    ) != signer || !isSigner[signer]
+                ) {
+                    revert InvalidSignature(signer);
+                }
+            }
+        }
+
+        isExecuted[digest] = true;
+
+        (bool success,) = t.target.call{value: t.value}(t.payload);
+
+        if (!success) revert();
+    }
 
     event SignersChanged(address account, bool signer);
 
-    function updateSigner(address account, bool signer) external virtual {
+    function setSigner(address account, bool signer) external virtual {
         if (msg.sender != address(this)) revert();
 
         if (isSigner[account] == signer) revert();
 
         unchecked {
-            if (signer) ++totalSigners;
+            if (signer) {
+                ++totalSigners;
+            } else {
+                --totalSigners;
+            }
         }
+
+        if (totalSigners < minimumConfirmations) revert();
 
         isSigner[account] = signer;
 
@@ -80,42 +123,5 @@ contract Multisig is EIP712("Multisig", "1") {
         minimumConfirmations = minConfirmations;
 
         emit MinimumConfirmationsChanged(minConfirmations);
-    }
-
-    error InvalidSignature(address signer);
-
-    function execute(Tx calldata t) external virtual {
-        uint256 signers = t.signers.length;
-
-        if (signers != t.signatures.length) revert();
-
-        if (signers < minimumConfirmations) revert();
-
-        bytes32 digest =
-            keccak256(abi.encode(t.target, t.value, t.payload, t.nullifier));
-
-        if (isExecuted[digest]) revert();
-
-        // Incrementing cannot reasonably overflow.
-        unchecked {
-            for (uint256 i; i < signers; ++i) {
-                if (
-                    ecrecover(
-                        digest,
-                        t.signatures[i].v,
-                        t.signatures[i].r,
-                        t.signatures[i].s
-                    ) != t.signers[i] || !isSigner[t.signers[i]]
-                ) {
-                    revert InvalidSignature(t.signers[i]);
-                }
-            }
-        }
-
-        isExecuted[digest] = true;
-
-        (bool success,) = t.target.call{value: t.value}(t.payload);
-
-        if (!success) revert();
     }
 }

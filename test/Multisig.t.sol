@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
-import "../src/Counter.sol";
+import "./Counter.sol";
 import "../src/Multisig.sol";
 
 contract MultisigTest is Test {
@@ -38,23 +38,13 @@ contract MultisigTest is Test {
         signers[1] = addr1;
         signers[2] = addr2;
 
-        ms = new Multisig(signers);
+        ms = new Multisig(signers, 3);
         target = new Counter();
     }
 
     /// -----------------------------------------------------------------------
     /// Helpers
     /// -----------------------------------------------------------------------
-
-    function getSigners() internal view returns (address[] memory addrs) {
-        addrs = new address[](3);
-
-        addrs[0] = addr0;
-
-        addrs[1] = addr1;
-
-        addrs[2] = addr2;
-    }
 
     function getSignatures(bytes32 digest)
         internal
@@ -64,16 +54,13 @@ contract MultisigTest is Test {
         sigs = new Signature[](3);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
-
-        sigs[0] = Signature(v, r, s);
+        sigs[0] = Signature(addr0, v, r, s);
 
         (v, r, s) = vm.sign(pk1, digest);
-
-        sigs[1] = Signature(v, r, s);
+        sigs[1] = Signature(addr1, v, r, s);
 
         (v, r, s) = vm.sign(pk2, digest);
-
-        sigs[2] = Signature(v, r, s);
+        sigs[2] = Signature(addr2, v, r, s);
     }
 
     /// -----------------------------------------------------------------------
@@ -85,13 +72,12 @@ contract MultisigTest is Test {
             abi.encodeWithSelector(target.setNumber.selector, 420);
         bytes32 nullifier = 0x00;
         bytes32 digest =
-            keccak256(abi.encode(address(target), 0, payload, nullifier));
+            keccak256(abi.encodePacked(target, uint256(0), payload, nullifier));
 
-        address[] memory signers = getSigners();
-        Signature[] memory sigs = getSignatures(digest);
+        Signature[] memory signatures = getSignatures(digest);
 
         Tx memory t =
-            Tx(payable(address(target)), 0, signers, sigs, payload, nullifier);
+            Tx(payable(address(target)), 0, payload, nullifier, signatures);
 
         ms.execute(t);
 
