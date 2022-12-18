@@ -15,6 +15,7 @@ struct Tx {
     uint256 value;
     bytes payload;
     bytes32 nullifier;
+    bool delegate;
     Signature[] signatures;
 }
 
@@ -85,7 +86,13 @@ contract Multisig is EIP712("Multisig", "1") {
 
         isExecuted[digest] = true;
 
-        (bool success,) = t.target.call{value: t.value}(t.payload);
+        bool success;
+        
+        if (t.delegate) {
+            (success,) = t.target.delegatecall(t.payload);
+        } else {
+            (success,) = t.target.call{value: t.value}(t.payload);
+        }
 
         if (!success) revert();
     }

@@ -77,7 +77,7 @@ contract MultisigTest is Test {
         Signature[] memory signatures = getSignatures(digest);
 
         Tx memory t =
-            Tx(payable(address(target)), 0, payload, nullifier, signatures);
+            Tx(payable(address(target)), 0, payload, nullifier, false, signatures);
 
         ms.execute(t);
 
