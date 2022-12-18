@@ -2,24 +2,23 @@
 pragma solidity ^0.8.13;
 
 import "solbase/utils/EIP712.sol";
-import "solbase/utils/ECDSA.sol";
+
+struct Signature {
+    uint8 v;
+    bytes32 r;
+    bytes32 s;
+}
 
 struct Tx {
     address payable target;
     uint256 value;
     address[] signers;
-    bytes[] signatures;
+    Signature[] signatures;
     bytes payload;
     bytes32 nullifier;
 }
 
 contract Multisig is EIP712("Multisig", "1") {
-    /// -----------------------------------------------------------------------
-    /// Dependencies
-    /// -----------------------------------------------------------------------
-
-    using ECDSA for bytes32;
-
     /// -----------------------------------------------------------------------
     /// Multisig Storage
     /// -----------------------------------------------------------------------
@@ -56,7 +55,7 @@ contract Multisig is EIP712("Multisig", "1") {
 
     event SignersChanged(address account, bool signer);
 
-    function updateSigner(address account, bool signer) public virtual {
+    function updateSigner(address account, bool signer) external virtual {
         if (msg.sender != address(this)) revert();
 
         if (isSigner[account] == signer) revert();
@@ -101,8 +100,12 @@ contract Multisig is EIP712("Multisig", "1") {
         unchecked {
             for (uint256 i; i < signers; ++i) {
                 if (
-                    digest.recover(t.signatures[i]) != t.signers[i]
-                        || !isSigner[t.signers[i]]
+                    ecrecover(
+                        digest,
+                        t.signatures[i].v,
+                        t.signatures[i].r,
+                        t.signatures[i].s
+                    ) != t.signers[i] || !isSigner[t.signers[i]]
                 ) {
                     revert InvalidSignature(t.signers[i]);
                 }

@@ -39,6 +39,7 @@ contract MultisigTest is Test {
         signers[2] = addr2;
 
         ms = new Multisig(signers);
+        target = new Counter();
     }
 
     /// -----------------------------------------------------------------------
@@ -58,20 +59,42 @@ contract MultisigTest is Test {
     function getSignatures(bytes32 digest)
         internal
         view
-        returns (bytes[] memory sigs)
+        returns (Signature[] memory sigs)
     {
-        sigs = new bytes[](3);
+        sigs = new Signature[](3);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
 
-        sigs[0] = abi.encode(v, r, s);
+        sigs[0] = Signature(v, r, s);
 
         (v, r, s) = vm.sign(pk1, digest);
 
-        sigs[1] = abi.encode(v, r, s);
+        sigs[1] = Signature(v, r, s);
 
         (v, r, s) = vm.sign(pk2, digest);
 
-        sigs[2] = abi.encode(v, r, s);
+        sigs[2] = Signature(v, r, s);
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Tests
+    /// -----------------------------------------------------------------------
+
+    function testBasic() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes32 nullifier = 0x00;
+        bytes32 digest =
+            keccak256(abi.encode(address(target), 0, payload, nullifier));
+
+        address[] memory signers = getSigners();
+        Signature[] memory sigs = getSignatures(digest);
+
+        Tx memory t =
+            Tx(payable(address(target)), 0, signers, sigs, payload, nullifier);
+
+        ms.execute(t);
+
+        assertEq(target.number(), 420);
     }
 }
