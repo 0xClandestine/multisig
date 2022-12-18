@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 import "solbase/utils/EIP712.sol";
 
+/// @dev If signer is non-zero we assume this signer has not signed the current tx.
 struct Signature {
     address signer;
     uint8 v;
@@ -14,121 +15,75 @@ struct Tx {
     address payable target;
     uint256 value;
     bytes payload;
-    bytes32 nullifier;
-    bool delegate;
     Signature[] signatures;
 }
 
+error InvalidSignerHash();
+error InvalidMinSigners();
+error InvalidCall();
+
 contract Multisig is EIP712("Multisig", "1") {
     /// -----------------------------------------------------------------------
-    /// Multisig Storage
+    /// Mutables
     /// -----------------------------------------------------------------------
 
-    uint256 public totalSigners;
-
-    uint256 public minimumConfirmations;
-
-    mapping(address => bool) public isSigner;
-
-    mapping(bytes32 => bool) public isExecuted;
+    uint256 public nonce;
 
     /// -----------------------------------------------------------------------
-    /// Construction
+    /// Immutables
     /// -----------------------------------------------------------------------
 
-    constructor(address[] memory signers, uint256 _minimumConfirmations) {
-        unchecked {
-            uint256 _totalSigners = signers.length;
+    bytes32 public immutable VERIFICATION_HASH;
 
-            for (uint256 i; i < _totalSigners; ++i) {
-                ++totalSigners;
+    uint256 public immutable MIN_SIGNERS;
 
-                isSigner[signers[i]] = true;
-            }
-
-            minimumConfirmations = _minimumConfirmations;
-        }
+    constructor(bytes32 _HASH_OF_SIGNERS, uint256 _MIN_SIGNERS) {
+        VERIFICATION_HASH = _HASH_OF_SIGNERS;
+        MIN_SIGNERS = _MIN_SIGNERS;
     }
 
     /// -----------------------------------------------------------------------
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
-    error InvalidSignature(address signer);
-
     function execute(Tx calldata t) external virtual {
-        uint256 signers = t.signatures.length;
-
-        if (signers < minimumConfirmations) revert();
-
-        bytes32 digest = keccak256(
-            abi.encodePacked(t.target, t.value, t.payload, t.nullifier)
+        bytes32 digest = computeDigest(
+            keccak256(abi.encodePacked(t.target, t.value, t.payload, nonce++))
         );
 
-        if (isExecuted[digest]) revert();
+        uint256 nonSigners;
+        uint256 totalSigners = t.signatures.length;
+        address[] memory signers = new address[](totalSigners);
 
-        // Incrementing cannot reasonably overflow.
         unchecked {
-            for (uint256 i; i < signers; ++i) {
+            for (uint256 i; i < totalSigners; ++i) {
                 address signer = t.signatures[i].signer;
-                if (
-                    ecrecover(
+
+                if (signer == address(0)) {
+                    signers[i] = ecrecover(
                         digest,
                         t.signatures[i].v,
                         t.signatures[i].r,
                         t.signatures[i].s
-                    ) != signer || !isSigner[signer]
-                ) {
-                    revert InvalidSignature(signer);
+                    );
+                } else {
+                    signers[i] = signer;
+
+                    ++nonSigners;
                 }
             }
+
+            // assert m-of-n signers are required for tx to execute
+            if (totalSigners - nonSigners < MIN_SIGNERS) revert InvalidMinSigners();
         }
 
-        isExecuted[digest] = true;
+        // assert hash of all signers is equal to VERIFICATION_HASH
+        if (keccak256(abi.encodePacked(signers)) != VERIFICATION_HASH) revert InvalidSignerHash();
 
-        bool success;
-        
-        if (t.delegate) {
-            (success,) = t.target.delegatecall(t.payload);
-        } else {
-            (success,) = t.target.call{value: t.value}(t.payload);
-        }
+        // call target contract with tx value and payload
+        (bool success,) = t.target.call{value: t.value}(t.payload);
 
-        if (!success) revert();
-    }
-
-    event SignersChanged(address account, bool signer);
-
-    function setSigner(address account, bool signer) external virtual {
-        if (msg.sender != address(this)) revert();
-
-        if (isSigner[account] == signer) revert();
-
-        unchecked {
-            if (signer) {
-                ++totalSigners;
-            } else {
-                --totalSigners;
-            }
-        }
-
-        if (totalSigners < minimumConfirmations) revert();
-
-        isSigner[account] = signer;
-
-        emit SignersChanged(account, signer);
-    }
-
-    event MinimumConfirmationsChanged(uint256 minConfirmations);
-
-    function setMinimumConfirmations(uint256 minConfirmations)
-        external
-        virtual
-    {
-        if (msg.sender != address(this)) revert();
-
-        minimumConfirmations = minConfirmations;
-
-        emit MinimumConfirmationsChanged(minConfirmations);
+        // assert call is successful
+        if (!success) revert InvalidCall();
     }
 }

@@ -5,13 +5,22 @@ import "forge-std/Test.sol";
 import "./Counter.sol";
 import "../src/Multisig.sol";
 
+contract MultisigMock is Multisig {
+    constructor(bytes32 signerHash, uint256 required)
+        Multisig(signerHash, required)
+    {}
+
+    function _computeDigest(bytes32 digest) external view returns (bytes32) {
+        return computeDigest(digest);
+    }
+}
+
 contract MultisigTest is Test {
     /// -----------------------------------------------------------------------
     /// Testing Storage
     /// -----------------------------------------------------------------------
 
-    Multisig ms;
-
+    MultisigMock ms;
     Counter target;
 
     address addr0;
@@ -38,7 +47,9 @@ contract MultisigTest is Test {
         signers[1] = addr1;
         signers[2] = addr2;
 
-        ms = new Multisig(signers, 3);
+        bytes32 hashOfSigners = keccak256(abi.encodePacked(signers));
+
+        ms = new MultisigMock(hashOfSigners, 2);
         target = new Counter();
     }
 
@@ -46,21 +57,45 @@ contract MultisigTest is Test {
     /// Helpers
     /// -----------------------------------------------------------------------
 
-    function getSignatures(bytes32 digest)
+    function getSignatures_3_of_3(bytes32 digest)
         internal
-        view
-        returns (Signature[] memory sigs)
+        returns (
+            // view
+            Signature[] memory sigs
+        )
     {
         sigs = new Signature[](3);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
-        sigs[0] = Signature(addr0, v, r, s);
+        sigs[0] = Signature(address(0), v, r, s);
 
         (v, r, s) = vm.sign(pk1, digest);
-        sigs[1] = Signature(addr1, v, r, s);
+        sigs[1] = Signature(address(0), v, r, s);
 
         (v, r, s) = vm.sign(pk2, digest);
-        sigs[2] = Signature(addr2, v, r, s);
+        sigs[2] = Signature(address(0), v, r, s);
+    }
+
+    function getSignatures_2_of_3(bytes32 digest)
+        internal
+        returns (
+            // view
+            Signature[] memory sigs
+        )
+    {
+        sigs = getSignatures_3_of_3(digest);
+        sigs[0].signer = addr0;
+    }
+
+    function getSignatures_1_of_3(bytes32 digest)
+        internal
+        returns (
+            // view
+            Signature[] memory sigs
+        )
+    {
+        sigs = getSignatures_2_of_3(digest);
+        sigs[1].signer = addr1;
     }
 
     /// -----------------------------------------------------------------------
@@ -70,14 +105,18 @@ contract MultisigTest is Test {
     function testBasic() public {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
-        bytes32 nullifier = 0x00;
-        bytes32 digest =
-            keccak256(abi.encodePacked(target, uint256(0), payload, nullifier));
 
-        Signature[] memory signatures = getSignatures(digest);
+        bytes32 digest = ms._computeDigest(
+            keccak256(
+                abi.encodePacked(
+                    address(target), uint256(0), payload, uint256(0)
+                )
+            )
+        );
 
-        Tx memory t =
-            Tx(payable(address(target)), 0, payload, nullifier, false, signatures);
+        Tx memory t = Tx(
+            payable(address(target)), 0, payload, getSignatures_2_of_3(digest)
+        );
 
         ms.execute(t);
 
