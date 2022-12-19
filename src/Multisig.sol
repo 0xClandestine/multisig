@@ -46,16 +46,30 @@ contract Multisig is EIP712("Multisig", "1") {
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
-    function execute(Tx calldata t) external virtual {
-        bytes32 digest = computeDigest(
-            keccak256(abi.encodePacked(t.target, t.value, t.payload, nonce++))
-        );
+    receive() external payable virtual {}
 
+    function execute(Tx calldata t) external virtual {
         uint256 nonSigners;
+
         uint256 totalSigners = t.signatures.length;
+
         address[] memory signers = new address[](totalSigners);
 
         unchecked {
+            bytes32 digest = computeDigest(
+                keccak256(
+                    abi.encodePacked(
+                        keccak256(
+                            "Order(address target,uint256 value,bytes payload,uint256 nonce)"
+                        ),
+                        t.target,
+                        t.value,
+                        t.payload,
+                        nonce++
+                    )
+                )
+            );
+
             for (uint256 i; i < totalSigners; ++i) {
                 address signer = t.signatures[i].signer;
 
@@ -74,16 +88,20 @@ contract Multisig is EIP712("Multisig", "1") {
             }
 
             // assert m-of-n signers are required for tx to execute
-            if (totalSigners - nonSigners < MIN_SIGNERS) revert InvalidMinSigners();
+            if (totalSigners - nonSigners < MIN_SIGNERS) {
+                revert InvalidMinSigners();
+            }
+
+            // assert hash of all signers is equal to VERIFICATION_HASH
+            if (keccak256(abi.encodePacked(signers)) != VERIFICATION_HASH) {
+                revert InvalidSignerHash();
+            }
+
+            // call target contract with tx value and payload
+            (bool success,) = t.target.call{value: t.value}(t.payload);
+
+            // assert call is successful
+            if (!success) revert InvalidCall();
         }
-
-        // assert hash of all signers is equal to VERIFICATION_HASH
-        if (keccak256(abi.encodePacked(signers)) != VERIFICATION_HASH) revert InvalidSignerHash();
-
-        // call target contract with tx value and payload
-        (bool success,) = t.target.call{value: t.value}(t.payload);
-
-        // assert call is successful
-        if (!success) revert InvalidCall();
     }
 }

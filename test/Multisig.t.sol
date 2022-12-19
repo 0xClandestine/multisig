@@ -59,10 +59,8 @@ contract MultisigTest is Test {
 
     function getSignatures_3_of_3(bytes32 digest)
         internal
-        returns (
-            // view
-            Signature[] memory sigs
-        )
+        view
+        returns (Signature[] memory sigs)
     {
         sigs = new Signature[](3);
 
@@ -78,10 +76,8 @@ contract MultisigTest is Test {
 
     function getSignatures_2_of_3(bytes32 digest)
         internal
-        returns (
-            // view
-            Signature[] memory sigs
-        )
+        view
+        returns (Signature[] memory sigs)
     {
         sigs = getSignatures_3_of_3(digest);
         sigs[0].signer = addr0;
@@ -89,10 +85,8 @@ contract MultisigTest is Test {
 
     function getSignatures_1_of_3(bytes32 digest)
         internal
-        returns (
-            // view
-            Signature[] memory sigs
-        )
+        view
+        returns (Signature[] memory sigs)
     {
         sigs = getSignatures_2_of_3(digest);
         sigs[1].signer = addr1;
@@ -109,7 +103,13 @@ contract MultisigTest is Test {
         bytes32 digest = ms._computeDigest(
             keccak256(
                 abi.encodePacked(
-                    address(target), uint256(0), payload, uint256(0)
+                    keccak256(
+                        "Order(address target,uint256 value,bytes payload,uint256 nonce)"
+                    ),
+                    address(target),
+                    uint256(0),
+                    payload,
+                    uint256(0)
                 )
             )
         );
@@ -120,6 +120,14 @@ contract MultisigTest is Test {
 
         ms.execute(t);
 
+        // assert replays are impossible
+        vm.expectRevert();
+        ms.execute(t);
+
+        // assert call was made as expected
         assertEq(target.number(), 420);
+
+        // assert ms nonce has increased
+        assertEq(ms.nonce(), 1);
     }
 }
