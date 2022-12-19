@@ -119,6 +119,30 @@ contract MultisigTest is Test {
     /// Tests
     /// -----------------------------------------------------------------------
 
+    function testSendEther() public {
+        deal(address(ms), 1 ether);
+        assertEq(address(ms).balance, 1 ether);
+
+        bytes memory payload;
+
+        bytes32 digest = getDigest(address(target), 1 ether, payload, 0);
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 1 ether,
+            payload: payload,
+            signatures: getSignatures_2_of_3(digest)
+        });
+
+        ms.execute(t);
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+
+        assertEq(ms.nonce(), 1);
+        assertEq(address(target).balance, 1 ether);
+    }
+
     function testAttemptReplayAttack() public {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
