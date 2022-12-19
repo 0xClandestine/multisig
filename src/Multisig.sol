@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "solbase/utils/EIP712.sol";
-
 /// @dev If signer is non-zero we assume this signer has not signed the current tx.
 struct Signature {
     address signer;
@@ -18,11 +16,23 @@ struct Tx {
     Signature[] signatures;
 }
 
-error InvalidSignerHash();
-error InvalidMinSigners();
-error InvalidCall();
+error VerificationFailed();
 
-contract Multisig is EIP712("Multisig", "1") {
+error InsufficientSigners();
+
+error ExecutionReverted();
+
+/// @dev `keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")`.
+bytes32 constant DOMAIN_TYPEHASH =
+    0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
+
+bytes32 constant HASHED_DOMAIN_NAME = keccak256(bytes("Multisig"));
+
+bytes32 constant HASHED_DOMAIN_VERSION = keccak256(bytes("1"));
+
+/// @notice Minimal and gas effecient multi-signature wallet.
+/// @author 0xClandestine
+contract Multisig {
     /// -----------------------------------------------------------------------
     /// Mutables
     /// -----------------------------------------------------------------------
@@ -35,11 +45,11 @@ contract Multisig is EIP712("Multisig", "1") {
 
     bytes32 public immutable VERIFICATION_HASH;
 
-    uint256 public immutable MIN_SIGNERS;
+    uint256 public immutable MINIMUM_SIGNERS;
 
-    constructor(bytes32 _HASH_OF_SIGNERS, uint256 _MIN_SIGNERS) {
+    constructor(bytes32 _HASH_OF_SIGNERS, uint256 _MINIMUM_SIGNERS) {
         VERIFICATION_HASH = _HASH_OF_SIGNERS;
-        MIN_SIGNERS = _MIN_SIGNERS;
+        MINIMUM_SIGNERS = _MINIMUM_SIGNERS;
     }
 
     /// -----------------------------------------------------------------------
@@ -49,23 +59,35 @@ contract Multisig is EIP712("Multisig", "1") {
     receive() external payable virtual {}
 
     function execute(Tx calldata t) external virtual {
-        uint256 nonSigners;
-
-        uint256 totalSigners = t.signatures.length;
-
-        address[] memory signers = new address[](totalSigners);
-
         unchecked {
-            bytes32 digest = computeDigest(
-                keccak256(
-                    abi.encodePacked(
-                        keccak256(
-                            "Order(address target,uint256 value,bytes payload,uint256 nonce)"
-                        ),
-                        t.target,
-                        t.value,
-                        t.payload,
-                        nonce++
+            uint256 nonSigners;
+
+            uint256 totalSigners = t.signatures.length;
+
+            address[] memory signers = new address[](totalSigners);
+
+            bytes32 digest = keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    keccak256(
+                        abi.encode(
+                            DOMAIN_TYPEHASH,
+                            HASHED_DOMAIN_NAME,
+                            HASHED_DOMAIN_VERSION,
+                            block.chainid,
+                            address(this)
+                        )
+                    ),
+                    keccak256(
+                        abi.encodePacked(
+                            keccak256(
+                                "execute(address target,uint256 value,bytes payload,uint256 nonce)"
+                            ),
+                            t.target,
+                            t.value,
+                            t.payload,
+                            nonce++
+                        )
                     )
                 )
             );
@@ -88,20 +110,20 @@ contract Multisig is EIP712("Multisig", "1") {
             }
 
             // assert m-of-n signers are required for tx to execute
-            if (totalSigners - nonSigners < MIN_SIGNERS) {
-                revert InvalidMinSigners();
+            if (totalSigners - nonSigners < MINIMUM_SIGNERS) {
+                revert InsufficientSigners();
             }
 
             // assert hash of all signers is equal to VERIFICATION_HASH
             if (keccak256(abi.encodePacked(signers)) != VERIFICATION_HASH) {
-                revert InvalidSignerHash();
+                revert VerificationFailed();
             }
 
             // call target contract with tx value and payload
             (bool success,) = t.target.call{value: t.value}(t.payload);
 
             // assert call is successful
-            if (!success) revert InvalidCall();
+            if (!success) revert ExecutionReverted();
         }
     }
 }

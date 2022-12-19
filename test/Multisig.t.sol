@@ -5,22 +5,12 @@ import "forge-std/Test.sol";
 import "./Counter.sol";
 import "../src/Multisig.sol";
 
-contract MultisigMock is Multisig {
-    constructor(bytes32 signerHash, uint256 required)
-        Multisig(signerHash, required)
-    {}
-
-    function _computeDigest(bytes32 digest) external view returns (bytes32) {
-        return computeDigest(digest);
-    }
-}
-
 contract MultisigTest is Test {
     /// -----------------------------------------------------------------------
     /// Testing Storage
     /// -----------------------------------------------------------------------
 
-    MultisigMock ms;
+    Multisig ms;
     Counter target;
 
     address addr0;
@@ -49,7 +39,7 @@ contract MultisigTest is Test {
 
         bytes32 hashOfSigners = keccak256(abi.encodePacked(signers));
 
-        ms = new MultisigMock(hashOfSigners, 2);
+        ms = new Multisig(hashOfSigners, 2);
         target = new Counter();
     }
 
@@ -92,42 +82,171 @@ contract MultisigTest is Test {
         sigs[1].signer = addr1;
     }
 
+    function getDigest(
+        address _target,
+        uint256 _value,
+        bytes memory _payload,
+        uint256 _nonce
+    ) internal view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                keccak256(
+                    abi.encode(
+                        DOMAIN_TYPEHASH,
+                        HASHED_DOMAIN_NAME,
+                        HASHED_DOMAIN_VERSION,
+                        block.chainid,
+                        address(ms)
+                    )
+                ),
+                keccak256(
+                    abi.encodePacked(
+                        keccak256(
+                            "execute(address target,uint256 value,bytes payload,uint256 nonce)"
+                        ),
+                        _target,
+                        _value,
+                        _payload,
+                        _nonce
+                    )
+                )
+            )
+        );
+    }
+
     /// -----------------------------------------------------------------------
     /// Tests
     /// -----------------------------------------------------------------------
 
-    function testBasic() public {
+    function testAttemptReplayAttack() public {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = ms._computeDigest(
-            keccak256(
-                abi.encodePacked(
-                    keccak256(
-                        "Order(address target,uint256 value,bytes payload,uint256 nonce)"
-                    ),
-                    address(target),
-                    uint256(0),
-                    payload,
-                    uint256(0)
-                )
-            )
-        );
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        Tx memory t = Tx(
-            payable(address(target)), 0, payload, getSignatures_2_of_3(digest)
-        );
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 0,
+            payload: payload,
+            signatures: getSignatures_2_of_3(digest)
+        });
 
         ms.execute(t);
 
-        // assert replays are impossible
-        vm.expectRevert();
+        vm.expectRevert(VerificationFailed.selector);
         ms.execute(t);
 
-        // assert call was made as expected
         assertEq(target.number(), 420);
-
-        // assert ms nonce has increased
         assertEq(ms.nonce(), 1);
+    }
+
+    function testAttemptDoubleSignatureAttack() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        Signature[] memory signatures = getSignatures_3_of_3(digest);
+        signatures[1] = signatures[0];
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 0,
+            payload: payload,
+            signatures: signatures
+        });
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+    }
+
+    function testAttemptBadTarget() public {
+        Counter badTarget = new Counter();
+
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        Tx memory t = Tx({
+            target: payable(address(badTarget)),
+            value: 0,
+            payload: payload,
+            signatures: getSignatures_2_of_3(digest)
+        });
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+    }
+
+    function testAttemptBadValue() public {
+        deal(address(ms), 1 ether);
+        
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 1 ether,
+            payload: payload,
+            signatures: getSignatures_2_of_3(digest)
+        });
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+    }
+
+    function testAttemptBadPayload() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 0,
+            payload: new bytes(0),
+            signatures: getSignatures_2_of_3(digest)
+        });
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+    }
+
+    function testAttemptBadNonce() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 1);
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 0,
+            payload: payload,
+            signatures: getSignatures_2_of_3(digest)
+        });
+
+        vm.expectRevert(VerificationFailed.selector);
+        ms.execute(t);
+    }
+
+    function testAttemptInsufficientSigners() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 1);
+
+        Tx memory t = Tx({
+            target: payable(address(target)),
+            value: 0,
+            payload: payload,
+            signatures: getSignatures_1_of_3(digest)
+        });
+
+        vm.expectRevert(InsufficientSigners.selector);
+        ms.execute(t);
     }
 }
