@@ -2,8 +2,8 @@
 pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
-import {Multisig} from "../src/Multisig.sol";
 import {Counter} from "./Counter.sol";
+import "../src/Multisig.sol";
 
 contract MultisigTest is Test {
     /// -----------------------------------------------------------------------
