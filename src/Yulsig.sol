@@ -29,7 +29,7 @@ contract Yulsig {
 
     receive() external payable virtual {}
 
-    fallback() external virtual payable {        
+    fallback() external payable virtual {
         assembly {
             if calldatasize() {
                 let freeMemoryPointer := mload(0x40)
@@ -50,11 +50,20 @@ contract Yulsig {
                 // 0x80                 address(this)
 
                 // 0x00 -> DOMAIN_TYPEHASH
-                mstore(0x00, 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f)
+                mstore(
+                    0x00,
+                    0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f
+                )
                 // 0x20 -> keccak256(name)
-                mstore(0x20, 0xcd4046335c6490bc800b62dfe4e32b5bbe64545e84e866aba69afbf5ce39f2df)
+                mstore(
+                    0x20,
+                    0xcd4046335c6490bc800b62dfe4e32b5bbe64545e84e866aba69afbf5ce39f2df
+                )
                 // 0x40 -> keccak256(version)
-                mstore(0x40, 0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6)
+                mstore(
+                    0x40,
+                    0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6
+                )
                 // 0x60 -> block.chainid
                 mstore(0x60, chainid())
                 // 0x80 -> address(this)
@@ -84,7 +93,10 @@ contract Yulsig {
                 // 0x80                 address(this)
 
                 // 0x60 -> ORDER_TYPEHASH
-                mstore(0x60, 0xaa3a4d0cd4c47557a58609818667017c466f80079033a1aa81f16097da102d43)
+                mstore(
+                    0x60,
+                    0xaa3a4d0cd4c47557a58609818667017c466f80079033a1aa81f16097da102d43
+                )
 
                 // 0x00                 tx payload length PL  <------ Overwrote DOMAIN_TYPEHASH
                 // 0x20                 DOMAIN_SEPARATOR()
@@ -139,9 +151,13 @@ contract Yulsig {
                 let payloadLength := mload(0x40)
 
                 let payloadTotalWords :=
-                    add(div(payloadLength, 0x20), iszero(iszero(mod(payloadLength, 0x20))))
+                    add(
+                        div(payloadLength, 0x20),
+                        iszero(iszero(mod(payloadLength, 0x20)))
+                    )
 
-                let totalSignersCalldataOffset := add(160, mul(payloadTotalWords, 0x20))
+                let totalSignersCalldataOffset :=
+                    add(160, mul(payloadTotalWords, 0x20))
 
                 calldatacopy(0x60, totalSignersCalldataOffset, 0x20) // elements
 
@@ -154,7 +170,11 @@ contract Yulsig {
                     let pos := add(0x200, mul(i, 32))
 
                     // copy next 4 words (signer, v, r, s)
-                    calldatacopy(0x100, add(add(totalSignersCalldataOffset, 32), mul(i, 128)), 128)
+                    calldatacopy(
+                        0x100,
+                        add(add(totalSignersCalldataOffset, 32), mul(i, 128)),
+                        128
+                    )
 
                     let signer := mload(0x100)
                     let v := mload(0x120)
@@ -195,11 +215,14 @@ contract Yulsig {
                     case false { totalNonSigners := add(totalNonSigners, 1) }
                 }
 
-                if iszero(eq(sload(verificationHash.slot), keccak256(0x200, 0x60))) { revert(0, 0) }
+                if iszero(
+                    eq(sload(verificationHash.slot), keccak256(0x200, 0x60))
+                ) { revert(0, 0) }
 
-                if gt(sload(minimumSigners.slot), sub(totalSigners, totalNonSigners)) {
-                    revert(0, 0)
-                }
+                if gt(
+                    sload(minimumSigners.slot),
+                    sub(totalSigners, totalNonSigners)
+                ) { revert(0, 0) }
 
                 /// -----------------------------------------------------------------------
                 /// 5) External Call
@@ -214,7 +237,10 @@ contract Yulsig {
                 // 0xc0 -> payload
                 calldatacopy(0xc0, 0xa0, mload(0x60))
 
-                let success := call(gas(), mload(0x80), mload(0xa0), 0xc0, mload(0x60), 0x0, 0x0)
+                let success :=
+                    call(
+                        gas(), mload(0x80), mload(0xa0), 0xc0, mload(0x60), 0x0, 0x0
+                    )
 
                 if iszero(success) { revert(0, 0) }
 

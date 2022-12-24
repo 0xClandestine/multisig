@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/Test.sol";
-import "./Counter.sol";
-import "../src/Multisig.sol";
+import {Test} from "forge-std/Test.sol";
+import {Multisig} from "../src/Multisig.sol";
+import {Counter} from "./Counter.sol";
 
 contract MultisigTest is Test {
     /// -----------------------------------------------------------------------
@@ -206,7 +206,7 @@ contract MultisigTest is Test {
 
     function testAttemptBadValue() public {
         deal(address(ms), 1 ether);
-        
+
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 

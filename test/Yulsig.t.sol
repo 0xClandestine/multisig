@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/Test.sol";
-import "./Counter.sol";
-import "../src/Yulsig.sol";
+import {Test} from "forge-std/Test.sol";
+import {Yulsig} from "../src/Yulsig.sol";
+import {Counter} from "./Counter.sol";
 
 contract YulsigTest is Test {
     /// -----------------------------------------------------------------------
@@ -49,7 +49,10 @@ contract YulsigTest is Test {
     /// Helpers
     /// -----------------------------------------------------------------------
 
-    function getSignatures_3_of_3(bytes32 digest) internal returns (bytes32[] memory sigs) {
+    function getSignatures_3_of_3(bytes32 digest)
+        internal
+        returns (bytes32[] memory sigs)
+    {
         sigs = new bytes32[](3*4);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
@@ -71,7 +74,10 @@ contract YulsigTest is Test {
         sigs[11] = bytes32(s);
     }
 
-    function getSignatures_1_of_3(bytes32 digest) internal returns (bytes32[] memory sigs) {
+    function getSignatures_1_of_3(bytes32 digest)
+        internal
+        returns (bytes32[] memory sigs)
+    {
         sigs = new bytes32[](3*4);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
@@ -93,14 +99,17 @@ contract YulsigTest is Test {
         sigs[11] = bytes32(0);
     }
 
-    function getDigest(address _target, uint256 _value, bytes memory _payload, uint256 _nonce)
-        internal
-        view
-        returns (bytes32)
-    {
+    function getDigest(
+        address _target,
+        uint256 _value,
+        bytes memory _payload,
+        uint256 _nonce
+    ) internal view returns (bytes32) {
         return keccak256(
             abi.encodePacked(
-                bytes32(0x0000000000000000000000000000000000000000000000000000000000001901),
+                bytes32(
+                    0x0000000000000000000000000000000000000000000000000000000000001901
+                ),
                 keccak256(
                     abi.encode(
                         0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f,
@@ -112,7 +121,9 @@ contract YulsigTest is Test {
                 ),
                 keccak256(
                     abi.encodePacked(
-                        bytes32(0xaa3a4d0cd4c47557a58609818667017c466f80079033a1aa81f16097da102d43),
+                        bytes32(
+                            0xaa3a4d0cd4c47557a58609818667017c466f80079033a1aa81f16097da102d43
+                        ),
                         _target,
                         _value,
                         _payload,
@@ -131,11 +142,10 @@ contract YulsigTest is Test {
         deal(address(ms), 1 ether);
         assertEq(address(ms).balance, 1 ether);
 
-        bytes32 digest = getDigest(address(target), 1 ether, hex'', 0);
+        bytes32 digest = getDigest(address(target), 1 ether, hex"", 0);
 
-        bytes memory transaction = abi.encode(
-            target, 1 ether, hex'', getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 1 ether, hex"", getSignatures_3_of_3(digest));
 
         address(ms).call(transaction);
 
@@ -144,38 +154,37 @@ contract YulsigTest is Test {
     }
 
     function testAttemptReplayAttack() public {
-        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        bytes memory transaction = abi.encode(
-            target, 0, payload, getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 0, payload, getSignatures_3_of_3(digest));
 
         address(ms).call(transaction);
 
         vm.expectRevert();
         address(ms).call(transaction);
-        
+
         // assertEq(ms.nonce(), 1);
         assertEq(target.number(), 420);
     }
 
     function testAttemptDoubleSignatureAttack() public {
-        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
         bytes32[] memory signatures = getSignatures_3_of_3(digest);
 
-        signatures[0] = signatures [4];
-        signatures[1] = signatures [5];
-        signatures[2] = signatures [6];
-        signatures[3] = signatures [7];
+        signatures[0] = signatures[4];
+        signatures[1] = signatures[5];
+        signatures[2] = signatures[6];
+        signatures[3] = signatures[7];
 
-        bytes memory transaction = abi.encode(
-            target, 0, payload, signatures
-        );
+        bytes memory transaction = abi.encode(target, 0, payload, signatures);
 
         vm.expectRevert();
         address(ms).call(transaction);
@@ -184,13 +193,13 @@ contract YulsigTest is Test {
     function testAttemptBadTarget() public {
         Counter badTarget = new Counter();
 
-        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        bytes memory transaction = abi.encode(
-            badTarget, 0, payload, getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(badTarget, 0, payload, getSignatures_3_of_3(digest));
 
         vm.expectRevert();
         address(ms).call(transaction);
@@ -199,13 +208,13 @@ contract YulsigTest is Test {
     function testAttemptBadValue() public {
         deal(address(ms), 1 ether);
 
-        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        bytes memory transaction = abi.encode(
-            target, 1 ether, payload, getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 1 ether, payload, getSignatures_3_of_3(digest));
 
         vm.expectRevert();
         address(ms).call(transaction);
@@ -220,9 +229,8 @@ contract YulsigTest is Test {
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        bytes memory transaction = abi.encode(
-            target, 0, badPayload, getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 0, badPayload, getSignatures_3_of_3(digest));
 
         vm.expectRevert();
         address(ms).call(transaction);
@@ -234,9 +242,8 @@ contract YulsigTest is Test {
 
         bytes32 digest = getDigest(address(target), 0, payload, 1);
 
-        bytes memory transaction = abi.encode(
-            target, 0, payload, getSignatures_3_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 0, payload, getSignatures_3_of_3(digest));
 
         vm.expectRevert();
         address(ms).call(transaction);
@@ -248,9 +255,8 @@ contract YulsigTest is Test {
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
-        bytes memory transaction = abi.encode(
-            target, 0, payload, getSignatures_1_of_3(digest)
-        );
+        bytes memory transaction =
+            abi.encode(target, 0, payload, getSignatures_1_of_3(digest));
 
         vm.expectRevert();
         address(ms).call(transaction);
