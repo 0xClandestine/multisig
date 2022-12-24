@@ -27,7 +27,7 @@ contract Yulsig {
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
-    function getDigest() external {
+    function execute() external {
         assembly {
             if calldatasize() {
                 /// -----------------------------------------------------------------------

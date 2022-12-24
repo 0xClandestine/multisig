@@ -119,13 +119,21 @@ contract YulsigTest is Test {
         bytes32 digest = getDigest(address(target), 0, payload, 0);
 
         bytes memory transaction = abi.encodeWithSelector(
-            Yulsig.getDigest.selector, target, 0, payload, getSignatures_3_of_3(digest)
+            Yulsig.execute.selector, target, 0, payload, getSignatures_3_of_3(digest)
         );
 
         (bool success, bytes memory returnData) = address(ms).call(transaction);
 
         emit log_string("Return data: ");
         emit log_bytes(returnData);
+
+        uint256 len;
+        
+        assembly {
+            len := extcodesize(sload(target.slot))
+        }
+
+        emit log_uint(len);
 
         assertEq(target.number(), 420);
         // assertEq(ms.nonce(), 1);
