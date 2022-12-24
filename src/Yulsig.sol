@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "forge-std/Test.sol";
-
 /// @notice Minimal and gas effecient multi-signature wallet.
 /// @author 0xClandestine
-contract Yulsig is Test {
+contract Yulsig {
     /// -----------------------------------------------------------------------
     /// Mutables
     /// -----------------------------------------------------------------------
