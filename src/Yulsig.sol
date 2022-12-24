@@ -12,7 +12,7 @@ contract Yulsig {
 
     uint256 private minimumSigners;
 
-    uint256 public nonce;
+    uint256 private nonce;
 
     /// -----------------------------------------------------------------------
     /// Construction
@@ -29,7 +29,7 @@ contract Yulsig {
 
     receive() external payable virtual {}
 
-    function execute() external {        
+    fallback() external virtual payable {        
         assembly {
             if calldatasize() {
                 let freeMemoryPointer := mload(0x40)
@@ -95,13 +95,13 @@ contract Yulsig {
                 // 0xb4 (0x94 + 32)     tx payload (start)
 
                 // 0x80 -> target
-                calldatacopy(0x80, 0x10, 0x14)
+                calldatacopy(0x80, 12, 0x14)
                 // 0x94 -> value
-                calldatacopy(0x94, 0x24, 0x20)
+                calldatacopy(0x94, 32, 0x20)
                 // 0x00 -> payload length
-                calldatacopy(0x00, 0x84, 0x20)
+                calldatacopy(0x00, 128, 0x20)
                 // 0xb4 -> payload
-                calldatacopy(0xb4, 0xa4, mload(0x00))
+                calldatacopy(0xb4, 160, mload(0x00))
 
                 // 0x00                 tx payload length PL
                 // 0x20                 DOMAIN_SEPARATOR()
@@ -134,14 +134,14 @@ contract Yulsig {
                 /// 4) Signer verification
                 /// -----------------------------------------------------------------------
 
-                calldatacopy(0x40, 0x84, 0x20) // payload length
+                calldatacopy(0x40, 0x80, 0x20) // payload length
 
                 let payloadLength := mload(0x40)
 
                 let payloadTotalWords :=
                     add(div(payloadLength, 0x20), iszero(iszero(mod(payloadLength, 0x20))))
 
-                let totalSignersCalldataOffset := add(0xa4, mul(payloadTotalWords, 0x20))
+                let totalSignersCalldataOffset := add(160, mul(payloadTotalWords, 0x20))
 
                 calldatacopy(0x60, totalSignersCalldataOffset, 0x20) // elements
 
@@ -206,13 +206,13 @@ contract Yulsig {
                 /// -----------------------------------------------------------------------
 
                 // 0x60 -> payload length
-                calldatacopy(0x60, 0x84, 0x20)
+                calldatacopy(0x60, 0x80, 0x20)
                 // 0x80 -> target
-                calldatacopy(0x80, 0x4, 0x20)
+                calldatacopy(0x80, 0x0, 0x20)
                 // 0xa0 -> value
-                calldatacopy(0xa0, 0x24, 0x20)
+                calldatacopy(0xa0, 0x20, 0x20)
                 // 0xc0 -> payload
-                calldatacopy(0xc0, 0xa4, mload(0x60))
+                calldatacopy(0xc0, 0xa0, mload(0x60))
 
                 let success := call(gas(), mload(0x80), mload(0xa0), 0xc0, mload(0x60), 0x0, 0x0)
 
