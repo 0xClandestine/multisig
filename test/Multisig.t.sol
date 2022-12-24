@@ -261,7 +261,7 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 1);
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),

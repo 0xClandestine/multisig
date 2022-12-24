@@ -71,6 +71,28 @@ contract YulsigTest is Test {
         sigs[11] = bytes32(s);
     }
 
+    function getSignatures_1_of_3(bytes32 digest) internal returns (bytes32[] memory sigs) {
+        sigs = new bytes32[](3*4);
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
+        sigs[0] = 0;
+        sigs[1] = bytes32(uint256(v));
+        sigs[2] = bytes32(r);
+        sigs[3] = bytes32(s);
+
+        (v, r, s) = vm.sign(pk1, digest);
+        sigs[4] = bytes32(uint256(uint160(addr1)));
+        sigs[5] = bytes32(0);
+        sigs[6] = bytes32(0);
+        sigs[7] = bytes32(0);
+
+        (v, r, s) = vm.sign(pk2, digest);
+        sigs[8] = bytes32(uint256(uint160(addr2)));
+        sigs[9] = bytes32(0);
+        sigs[10] = bytes32(0);
+        sigs[11] = bytes32(0);
+    }
+
     function getDigest(address _target, uint256 _value, bytes memory _payload, uint256 _nonce)
         internal
         view
@@ -134,8 +156,103 @@ contract YulsigTest is Test {
 
         vm.expectRevert();
         address(ms).call(transaction);
-
-        assertEq(target.number(), 420);
+        
         // assertEq(ms.nonce(), 1);
+        assertEq(target.number(), 420);
+    }
+
+    function testAttemptDoubleSignatureAttack() public {
+        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        bytes32[] memory signatures = getSignatures_3_of_3(digest);
+
+        signatures[0] = signatures [4];
+        signatures[1] = signatures [5];
+        signatures[2] = signatures [6];
+        signatures[3] = signatures [7];
+
+        bytes memory transaction = abi.encode(
+            target, 0, payload, signatures
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
+    }
+
+    function testAttemptBadTarget() public {
+        Counter badTarget = new Counter();
+
+        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        bytes memory transaction = abi.encode(
+            badTarget, 0, payload, getSignatures_3_of_3(digest)
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
+    }
+
+    function testAttemptBadValue() public {
+        deal(address(ms), 1 ether);
+
+        bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        bytes memory transaction = abi.encode(
+            target, 1 ether, payload, getSignatures_3_of_3(digest)
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
+    }
+
+    function testAttemptBadPayload() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes memory badPayload =
+            abi.encodeWithSelector(target.setNumber.selector, 69);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        bytes memory transaction = abi.encode(
+            target, 0, badPayload, getSignatures_3_of_3(digest)
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
+    }
+
+    function testAttemptBadNonce() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 1);
+
+        bytes memory transaction = abi.encode(
+            target, 0, payload, getSignatures_3_of_3(digest)
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
+    }
+
+    function testAttemptInsufficientSigners() public {
+        bytes memory payload =
+            abi.encodeWithSelector(target.setNumber.selector, 420);
+
+        bytes32 digest = getDigest(address(target), 0, payload, 0);
+
+        bytes memory transaction = abi.encode(
+            target, 0, payload, getSignatures_1_of_3(digest)
+        );
+
+        vm.expectRevert();
+        address(ms).call(transaction);
     }
 }
