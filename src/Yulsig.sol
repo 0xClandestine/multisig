@@ -29,6 +29,8 @@ contract Yulsig is Test {
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
+    receive() external payable virtual {}
+
     function execute() external {        
         assembly {
             if calldatasize() {
