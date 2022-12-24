@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
+import "forge-std/Test.sol";
+
 /// @notice Minimal and gas effecient multi-signature wallet.
 /// @author 0xClandestine
-contract Yulsig {
+contract Yulsig is Test {
     /// -----------------------------------------------------------------------
     /// Mutables
     /// -----------------------------------------------------------------------
@@ -12,7 +14,7 @@ contract Yulsig {
 
     uint256 private minimumSigners;
 
-    uint256 private nonce;
+    uint256 public nonce;
 
     /// -----------------------------------------------------------------------
     /// Construction
@@ -27,9 +29,10 @@ contract Yulsig {
     /// Multisig Logic
     /// -----------------------------------------------------------------------
 
-    function execute() external {
+    function execute() external {        
         assembly {
             if calldatasize() {
+                let freeMemoryPointer := mload(0x40)
                 /// -----------------------------------------------------------------------
                 /// 1) Compute EIP-712 Domain Separator
                 /// -----------------------------------------------------------------------
@@ -214,6 +217,11 @@ contract Yulsig {
                 let success := call(gas(), mload(0x80), mload(0xa0), 0xc0, mload(0x60), 0x0, 0x0)
 
                 if iszero(success) { revert(0, 0) }
+
+                // Restore the free memory pointer.
+                mstore(0x40, freeMemoryPointer)
+                // Restore the zero slot.
+                mstore(0x60, 0x00)
             }
         }
     }

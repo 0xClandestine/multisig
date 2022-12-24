@@ -31,12 +31,6 @@ contract YulsigTest is Test {
         (addr1, pk1) = makeAddrAndKey("addr1");
         (addr2, pk2) = makeAddrAndKey("addr2");
 
-        // address[] memory signers = new address[](3);
-
-        // signers[0] = addr0;
-        // signers[1] = addr1;
-        // signers[2] = addr2;
-
         bytes32 hashOfSigners;
 
         assembly {
@@ -46,9 +40,6 @@ contract YulsigTest is Test {
 
             hashOfSigners := keccak256(mload(0x40), 0x60)
         }
-
-        emit log_string("hash of signer");
-        emit log_bytes32(hashOfSigners);
 
         ms = new Yulsig(hashOfSigners, 2);
         target = new Counter();
@@ -82,6 +73,7 @@ contract YulsigTest is Test {
 
     function getDigest(address _target, uint256 _value, bytes memory _payload, uint256 _nonce)
         internal
+        view
         returns (bytes32)
     {
         return keccak256(
@@ -113,7 +105,25 @@ contract YulsigTest is Test {
     /// Tests
     /// -----------------------------------------------------------------------
 
-    function testYulsig() public {
+    function testSendEther() public {
+        deal(address(ms), 1 ether);
+        assertEq(address(ms).balance, 1 ether);
+
+        bytes memory payload;
+
+        bytes32 digest = getDigest(address(target), 1 ether, payload, 0);
+
+        bytes memory transaction = abi.encodeWithSelector(
+            Yulsig.execute.selector, target, 1 ether, payload, getSignatures_3_of_3(digest)
+        );
+
+        address(ms).call(transaction);
+
+        assertEq(ms.nonce(), 1);
+        assertEq(address(target).balance, 1 ether);
+    }
+
+    function testAttemptReplayAttack() public {
         bytes memory payload = abi.encodeWithSelector(target.setNumber.selector, 420);
 
         bytes32 digest = getDigest(address(target), 0, payload, 0);
@@ -122,20 +132,12 @@ contract YulsigTest is Test {
             Yulsig.execute.selector, target, 0, payload, getSignatures_3_of_3(digest)
         );
 
-        (bool success, bytes memory returnData) = address(ms).call(transaction);
+        address(ms).call(transaction);
 
-        emit log_string("Return data: ");
-        emit log_bytes(returnData);
-
-        uint256 len;
-        
-        assembly {
-            len := extcodesize(sload(target.slot))
-        }
-
-        emit log_uint(len);
+        vm.expectRevert();
+        address(ms).call(transaction);
 
         assertEq(target.number(), 420);
-        // assertEq(ms.nonce(), 1);
+        assertEq(ms.nonce(), 1);
     }
 }
