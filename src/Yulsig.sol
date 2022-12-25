@@ -147,15 +147,9 @@ contract Yulsig {
                 /// 4) Signer verification
                 /// -----------------------------------------------------------------------
 
-                calldatacopy(0x40, 0x80, 0x20) // payload length
+                calldatacopy(0x40, 0x80, 0x20)
 
                 let payloadLength := mload(0x40)
-
-                // let payloadTotalWords :=
-                //     add(
-                //         div(payloadLength, 0x20),
-                //         iszero(iszero(mod(payloadLength, 0x20)))
-                //     )
 
                 let totalSignersCalldataOffset :=
                     add(
@@ -245,7 +239,13 @@ contract Yulsig {
 
                 let success :=
                     call(
-                        gas(), mload(0x80), mload(0xa0), 0xc0, mload(0x60), 0x0, 0x0
+                        gas(),       // Amount of gas left for the transaction.
+                        mload(0x80), // Target.
+                        mload(0xa0), // Value.
+                        0xc0,        // Payload start.
+                        mload(0x60), // Payload length.
+                        0x0,         // Start of output.
+                        0x0          // Size of output.
                     )
 
                 if iszero(success) { revert(0, 0) }
