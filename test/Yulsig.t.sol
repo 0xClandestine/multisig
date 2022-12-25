@@ -31,17 +31,7 @@ contract YulsigTest is Test {
         (addr1, pk1) = makeAddrAndKey("addr1");
         (addr2, pk2) = makeAddrAndKey("addr2");
 
-        bytes32 hashOfSigners;
-
-        assembly {
-            mstore(mload(0x40), sload(addr0.slot))
-            mstore(add(mload(0x40), 0x20), sload(addr1.slot))
-            mstore(add(mload(0x40), 0x40), sload(addr2.slot))
-
-            hashOfSigners := keccak256(mload(0x40), 0x60)
-        }
-
-        ms = new Yulsig(hashOfSigners, 2);
+        ms = new Yulsig(keccak256(abi.encode(addr0, addr1, addr2)), 2);
         target = new Counter();
     }
 

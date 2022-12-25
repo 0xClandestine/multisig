@@ -3,6 +3,7 @@ pragma solidity ^0.8.13;
 
 /// @notice Minimal and gas effecient multi-signature wallet.
 /// @author 0xClandestine
+/// @dev 557 bytes runtime
 contract Yulsig {
     /// -----------------------------------------------------------------------
     /// Mutables
@@ -150,14 +151,23 @@ contract Yulsig {
 
                 let payloadLength := mload(0x40)
 
-                let payloadTotalWords :=
-                    add(
-                        div(payloadLength, 0x20),
-                        iszero(iszero(mod(payloadLength, 0x20)))
-                    )
+                // let payloadTotalWords :=
+                //     add(
+                //         div(payloadLength, 0x20),
+                //         iszero(iszero(mod(payloadLength, 0x20)))
+                //     )
 
                 let totalSignersCalldataOffset :=
-                    add(160, mul(payloadTotalWords, 0x20))
+                    add(
+                        160,
+                        mul(
+                            add(
+                                div(payloadLength, 0x20),
+                                iszero(iszero(mod(payloadLength, 0x20)))
+                            ),
+                            0x20
+                        )
+                    )
 
                 calldatacopy(0x60, totalSignersCalldataOffset, 0x20) // elements
 
@@ -177,8 +187,6 @@ contract Yulsig {
                     )
 
                     let signer := mload(0x100)
-                    let v := mload(0x120)
-                    let r := mload(0x140)
                     let s := mload(0x160)
 
                     // if signer is zero
@@ -192,14 +200,12 @@ contract Yulsig {
                                 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0
                             )
                         ) {
-                            mstore(0x20, v)
-                            mstore(0x40, r)
-                            mstore(0x60, s)
+                            mstore(0x100, mload(0x00))
                             pop(
                                 staticcall(
                                     gas(), // Amount of gas left for the transaction.
                                     0x01, // Address of `ecrecover`.
-                                    0x00, // Start of input.
+                                    0x100, // Start of input.
                                     0x80, // Size of input.
                                     0x40, // Start of output.
                                     0x20 // Size of output.
@@ -212,7 +218,7 @@ contract Yulsig {
                             mstore(pos, result)
                         }
                     }
-                    case false { totalNonSigners := add(totalNonSigners, 1) }
+                    default { totalNonSigners := add(totalNonSigners, 1) }
                 }
 
                 if iszero(
