@@ -237,18 +237,17 @@ contract Yulsig {
                 // 0xc0 -> payload
                 calldatacopy(0xc0, 0xa0, mload(0x60))
 
-                let success :=
+                if iszero(
                     call(
-                        gas(),       // Amount of gas left for the transaction.
+                        gas(), // Amount of gas left for the transaction.
                         mload(0x80), // Target.
                         mload(0xa0), // Value.
-                        0xc0,        // Payload start.
+                        0xc0, // Payload start.
                         mload(0x60), // Payload length.
-                        0x0,         // Start of output.
-                        0x0          // Size of output.
+                        0x0, // Start of output.
+                        0x0 // Size of output.
                     )
-
-                if iszero(success) { revert(0, 0) }
+                ) { revert(0, 0) }
 
                 // Restore the free memory pointer.
                 mstore(0x40, freeMemoryPointer)
