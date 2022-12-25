@@ -12,6 +12,7 @@ struct Signature {
 struct Tx {
     address payable target;
     uint256 value;
+    bool delegate;
     bytes payload;
     Signature[] signatures;
 }
@@ -37,19 +38,19 @@ contract Multisig {
     /// Mutables
     /// -----------------------------------------------------------------------
 
+    bytes32 public verificationHash;
+
+    uint256 public minimumSigners;
+
     uint256 public nonce;
 
     /// -----------------------------------------------------------------------
     /// Immutables
     /// -----------------------------------------------------------------------
 
-    bytes32 public immutable VERIFICATION_HASH;
-
-    uint256 public immutable MINIMUM_SIGNERS;
-
-    constructor(bytes32 _HASH_OF_SIGNERS, uint256 _MINIMUM_SIGNERS) {
-        VERIFICATION_HASH = _HASH_OF_SIGNERS;
-        MINIMUM_SIGNERS = _MINIMUM_SIGNERS;
+    constructor(bytes32 _hashOfSigners, uint256 _minimumSigners) {
+        verificationHash = _hashOfSigners;
+        minimumSigners = _minimumSigners;
     }
 
     /// -----------------------------------------------------------------------
@@ -81,10 +82,11 @@ contract Multisig {
                     keccak256(
                         abi.encodePacked(
                             keccak256(
-                                "execute(address target,uint256 value,bytes payload,uint256 nonce)"
+                                "execute(address target,uint256 value,bool delegate,bytes payload,uint256 nonce)"
                             ),
                             t.target,
                             t.value,
+                            t.delegate,
                             t.payload,
                             nonce++
                         )
@@ -110,17 +112,19 @@ contract Multisig {
             }
 
             // assert m-of-n signers are required for tx to execute
-            if (totalSigners - nonSigners < MINIMUM_SIGNERS) {
+            if (totalSigners - nonSigners < minimumSigners) {
                 revert InsufficientSigners();
             }
 
             // assert hash of all signers is equal to VERIFICATION_HASH
-            if (keccak256(abi.encodePacked(signers)) != VERIFICATION_HASH) {
+            if (keccak256(abi.encodePacked(signers)) != verificationHash) {
                 revert VerificationFailed();
             }
 
-            // call target contract with tx value and payload
-            (bool success,) = t.target.call{value: t.value}(t.payload);
+            // call target contract, value is ignored when delegating
+            (bool success,) = t.delegate
+                ? t.target.delegatecall(t.payload)
+                : t.target.call{value: t.value}(t.payload);
 
             // assert call is successful
             if (!success) revert ExecutionReverted();

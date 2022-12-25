@@ -85,6 +85,7 @@ contract MultisigTest is Test {
     function getDigest(
         address _target,
         uint256 _value,
+        bool _delegate,
         bytes memory _payload,
         uint256 _nonce
     ) internal view returns (bytes32) {
@@ -103,10 +104,11 @@ contract MultisigTest is Test {
                 keccak256(
                     abi.encodePacked(
                         keccak256(
-                            "execute(address target,uint256 value,bytes payload,uint256 nonce)"
+                            "execute(address target,uint256 value,bool delegate,bytes payload,uint256 nonce)"
                         ),
                         _target,
                         _value,
+                        _delegate,
                         _payload,
                         _nonce
                     )
@@ -125,11 +127,12 @@ contract MultisigTest is Test {
 
         bytes memory payload;
 
-        bytes32 digest = getDigest(address(target), 1 ether, payload, 0);
+        bytes32 digest = getDigest(address(target), 1 ether, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 1 ether,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_2_of_3(digest)
         });
@@ -147,11 +150,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 0,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_2_of_3(digest)
         });
@@ -169,7 +173,7 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Signature[] memory signatures = getSignatures_3_of_3(digest);
         signatures[1] = signatures[0];
@@ -177,6 +181,7 @@ contract MultisigTest is Test {
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 0,
+            delegate: false,
             payload: payload,
             signatures: signatures
         });
@@ -191,11 +196,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(badTarget)),
             value: 0,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_2_of_3(digest)
         });
@@ -210,11 +216,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 1 ether,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_2_of_3(digest)
         });
@@ -227,11 +234,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 0,
+            delegate: false,
             payload: new bytes(0),
             signatures: getSignatures_2_of_3(digest)
         });
@@ -244,11 +252,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 1);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 1);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 0,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_2_of_3(digest)
         });
@@ -261,11 +270,12 @@ contract MultisigTest is Test {
         bytes memory payload =
             abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        bytes32 digest = getDigest(address(target), 0, payload, 0);
+        bytes32 digest = getDigest(address(target), 0, false, payload, 0);
 
         Tx memory t = Tx({
             target: payable(address(target)),
             value: 0,
+            delegate: false,
             payload: payload,
             signatures: getSignatures_1_of_3(digest)
         });
