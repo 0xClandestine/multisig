@@ -8,3 +8,7 @@
 [submodule "lib/huffmate"]
 	path = lib/huffmate
 	url = https://github.com/pentagonxyz/huffmate
+[submodule "lib/safe-contracts"]
+	path = lib/safe-contracts
+	url = https://github.com/safe-global/safe-contracts
+	branch = v1.3.0
