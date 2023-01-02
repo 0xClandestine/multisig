@@ -57,7 +57,7 @@ contract Multisig {
 
     receive() external payable virtual {}
 
-    function execute(Tx calldata t) external virtual {
+    function execute(Tx calldata t) external virtual payable {
         unchecked {
             uint256 nonSigners;
 
