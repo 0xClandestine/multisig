@@ -37,9 +37,11 @@ contract MultisigTest is Test {
         signers[1] = addr1;
         signers[2] = addr2;
 
-        bytes32 hashOfSigners = keccak256(abi.encodePacked(signers));
+        uint256 quorum = 2;
 
-        ms = new Multisig(hashOfSigners, 2);
+        bytes32 verificationHash = keccak256(abi.encodePacked(signers, quorum));
+
+        ms = new Multisig(verificationHash);
         target = new Counter();
     }
 
@@ -134,6 +136,7 @@ contract MultisigTest is Test {
             value: 1 ether,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -157,6 +160,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -183,6 +187,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: signatures
         });
 
@@ -203,6 +208,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -223,6 +229,7 @@ contract MultisigTest is Test {
             value: 1 ether,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -241,6 +248,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: new bytes(0),
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -259,6 +267,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_2_of_3(digest)
         });
 
@@ -277,6 +286,7 @@ contract MultisigTest is Test {
             value: 0,
             delegate: false,
             payload: payload,
+            quorum: 2,
             signatures: getSignatures_1_of_3(digest)
         });
 

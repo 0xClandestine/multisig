@@ -14,6 +14,7 @@ struct Tx {
     uint256 value;
     bool delegate;
     bytes payload;
+    uint256 quorum;
     Signature[] signatures;
 }
 
@@ -40,17 +41,14 @@ contract Multisig {
 
     bytes32 public verificationHash;
 
-    uint256 public minimumSigners;
-
     uint256 public nonce;
 
     /// -----------------------------------------------------------------------
     /// Immutables
     /// -----------------------------------------------------------------------
 
-    constructor(bytes32 _hashOfSigners, uint256 _minimumSigners) {
+    constructor(bytes32 _hashOfSigners) {
         verificationHash = _hashOfSigners;
-        minimumSigners = _minimumSigners;
     }
 
     /// -----------------------------------------------------------------------
@@ -112,12 +110,12 @@ contract Multisig {
             }
 
             // assert m-of-n signers are required for tx to execute
-            if (totalSigners - nonSigners < minimumSigners) {
+            if (totalSigners - nonSigners < t.quorum) {
                 revert InsufficientSigners();
             }
 
             // assert hash of all signers is equal to VERIFICATION_HASH
-            if (keccak256(abi.encodePacked(signers)) != verificationHash) {
+            if (keccak256(abi.encodePacked(signers, t.quorum)) != verificationHash) {
                 revert VerificationFailed();
             }
 
