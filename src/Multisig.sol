@@ -1,131 +1,136 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.19;
 
-/// @dev If signer is non-zero we assume this signer has not signed the current tx.
-struct Signature {
-    address signer;
-    uint8 v;
-    bytes32 r;
-    bytes32 s;
-}
-
-struct Tx {
-    address payable target;
-    uint256 value;
-    bool delegate;
-    bytes payload;
-    uint256 quorum;
-    Signature[] signatures;
-}
+import "solady/utils/EIP712.sol";
+import "solady/utils/ECDSA.sol";
 
 error VerificationFailed();
-
 error InsufficientSigners();
-
 error ExecutionReverted();
 
-/// @dev `keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")`.
-bytes32 constant DOMAIN_TYPEHASH =
-    0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
+// keccak256("Tx(address target,uint256 value,bool delegate,bytes payload,uint256 deadline,uint256 nonce)");
+bytes32 constant TX_TYPEHASH = 0xafe0c581cad4b7c13925ee4d470d0dba861dfb871cb796cdb711c2f4449bf69d;
 
-bytes32 constant HASHED_DOMAIN_NAME = keccak256(bytes("Multisig"));
-
-bytes32 constant HASHED_DOMAIN_VERSION = keccak256(bytes("1"));
-
-/// @notice Minimal and gas effecient multi-signature wallet.
+/// @notice Minimal and gas efficient multi-signature wallet.
 /// @author 0xClandestine
-contract Multisig {
+abstract contract Multisig is EIP712 {
     /// -----------------------------------------------------------------------
-    /// Mutables
+    /// Events
     /// -----------------------------------------------------------------------
 
-    bytes32 public verificationHash;
+    event SignersAndQuorumSet(address[] signers, uint256 quorum);
+
+    /// -----------------------------------------------------------------------
+    /// Storage
+    /// -----------------------------------------------------------------------
+
+    bytes32 public signersAndQuorumHash;
 
     uint256 public nonce;
 
     /// -----------------------------------------------------------------------
-    /// Immutables
+    /// Construction
     /// -----------------------------------------------------------------------
 
-    constructor(bytes32 _hashOfSigners) {
-        verificationHash = _hashOfSigners;
+    constructor(address[] memory signers, uint256 quorum) {
+        _setSignersAndQuorum(signers, quorum);
     }
 
     /// -----------------------------------------------------------------------
-    /// Multisig Logic
+    /// Setters
     /// -----------------------------------------------------------------------
 
-    receive() external payable virtual {}
+    function _setSignersAndQuorum(address[] memory signers, uint256 quorum) internal virtual {
+        signersAndQuorumHash = keccak256(abi.encodePacked(signers, quorum));
 
-    function execute(Tx calldata t) external virtual payable {
+        emit SignersAndQuorumSet(signers, quorum);
+    }
+
+    function setSignersAndQuorum(address[] memory signers, uint256 quorum) external virtual {
+        if (msg.sender != address(this)) revert VerificationFailed();
+
+        signersAndQuorumHash = keccak256(abi.encodePacked(signers, quorum));
+
+        emit SignersAndQuorumSet(signers, quorum);
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Execution
+    /// -----------------------------------------------------------------------
+
+    /// @notice Executes a transaction.
+    /// @param target The target address of the transaction.
+    /// @param value The value of the transaction.
+    /// @param delegate A flag indicating whether to delegate the call or not.
+    /// @param deadline The deadline for the transaction.
+    /// @param quorum The quorum required for the transaction.
+    /// @param payload The payload data of the transaction.
+    /// @param signatures The signatures of the signers.
+    /// @dev Signatures must be in order and must be replaced with the relevant signer's address if they're not signing.
+    function execute(
+        address target,
+        uint256 value,
+        bool delegate,
+        uint256 deadline,
+        uint256 quorum,
+        bytes calldata payload,
+        bytes[] calldata signatures
+    ) external payable virtual {
         unchecked {
-            uint256 nonSigners;
+            address[] memory signers = new address[](signatures.length);
 
-            uint256 totalSigners = t.signatures.length;
-
-            address[] memory signers = new address[](totalSigners);
-
-            bytes32 digest = keccak256(
-                abi.encodePacked(
-                    "\x19\x01",
-                    keccak256(
-                        abi.encode(
-                            DOMAIN_TYPEHASH,
-                            HASHED_DOMAIN_NAME,
-                            HASHED_DOMAIN_VERSION,
-                            block.chainid,
-                            address(this)
-                        )
-                    ),
-                    keccak256(
-                        abi.encodePacked(
-                            keccak256(
-                                "execute(address target,uint256 value,bool delegate,bytes payload,uint256 nonce)"
-                            ),
-                            t.target,
-                            t.value,
-                            t.delegate,
-                            t.payload,
-                            nonce++
-                        )
-                    )
+            bytes32 digest = _hashTypedData(
+                keccak256(
+                    abi.encode(TX_TYPEHASH, target, value, delegate, payload, deadline, nonce++)
                 )
             );
 
-            for (uint256 i; i < totalSigners; ++i) {
-                address signer = t.signatures[i].signer;
+            uint256 totalNonSigners;
 
-                if (signer == address(0)) {
-                    signers[i] = ecrecover(
-                        digest,
-                        t.signatures[i].v,
-                        t.signatures[i].r,
-                        t.signatures[i].s
-                    );
+            for (uint256 i; i < signatures.length; ++i) {
+                if (signatures[i].length != 20) {
+                    (uint8 v, bytes32 r, bytes32 s) =
+                        abi.decode(signatures[i], (uint8, bytes32, bytes32));
+
+                    signers[i] = ecrecover(digest, v, r, s);
                 } else {
-                    signers[i] = signer;
+                    signers[i] = address(bytes20(signatures[i]));
 
-                    ++nonSigners;
+                    ++totalNonSigners;
                 }
             }
 
-            // assert m-of-n signers are required for tx to execute
-            if (totalSigners - nonSigners < t.quorum) {
-                revert InsufficientSigners();
-            }
-
-            // assert hash of all signers is equal to VERIFICATION_HASH
-            if (keccak256(abi.encodePacked(signers, t.quorum)) != verificationHash) {
+            // Assert the recovered list of signers and quorum are correct.
+            if (keccak256(abi.encodePacked(signers, quorum)) != signersAndQuorumHash) {
                 revert VerificationFailed();
             }
 
-            // call target contract, value is ignored when delegating
-            (bool success,) = t.delegate
-                ? t.target.delegatecall(t.payload)
-                : t.target.call{value: t.value}(t.payload);
+            // Assert m-of-n of the signers have signed.
+            if (signatures.length - totalNonSigners < quorum) {
+                revert InsufficientSigners();
+            }
 
-            // assert call is successful
-            if (!success) revert ExecutionReverted();
+            (bool success,) =
+                delegate ? target.delegatecall(payload) : target.call{value: value}(payload);
+
+            // Assert the transaction succeeded.
+            if (!success) {
+                revert ExecutionReverted();
+            }
         }
+    }
+
+    /// -----------------------------------------------------------------------
+    /// EIP712
+    /// -----------------------------------------------------------------------
+
+    function _domainNameAndVersion()
+        internal
+        pure
+        virtual
+        override
+        returns (string memory name, string memory version)
+    {
+        return ("Multisig", "1");
     }
 }
