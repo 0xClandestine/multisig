@@ -9,12 +9,12 @@ error VerificationFailed();
 error InsufficientSigners();
 error ExecutionReverted();
 
-// keccak256("Call(address target,uint256 value,bytes data,uint256 deadline,uint256 nonce)");
-bytes32 constant CALL_TYPEHASH = 0xd4149930d6ff08a361ca75aaedd2a3496dc25f7489b21179b7408a9d78d15b96;
+// keccak256("Call(address target,uint256 value,bytes32 dataHash,uint256 deadline,uint256 nonce)");
+bytes32 constant CALL_TYPEHASH = 0x4e885c46927d6b127eac2c84c43441f25504c49f72e87e9f0de0eb4dedb8e719;
 
-// keccak256("Delegate(address target,bytes data,uint256 deadline,uint256 nonce)");
+// keccak256("Delegate(address target,bytes32 dataHash,uint256 deadline,uint256 nonce)");
 bytes32 constant DELEGATE_CALL_TYPEHASH =
-    0x1a6fe3733e53c3d6a401b5c27d307e2a02d06a855ba7175032d8a686c37617d1;
+    0x4905d9a8afc9807f420f1bfff786e56d59f8df3cf6b84eb4559d5a3f922488c6;
 
 /// @notice Minimal and gas efficient multi-signature wallet.
 /// @author 0xClandestine
