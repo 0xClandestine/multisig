@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import {Counter} from "./Counter.sol";
-import "../src/Multisig.sol";
+import "../src/Factory.sol";
 
 contract MockMultisig is Multisig {
     constructor(address[] memory signers, uint256 quorum) Multisig(signers, quorum) {}
@@ -26,6 +26,7 @@ contract MultisigTest is Test {
     /// Testing Storage
     /// -----------------------------------------------------------------------
 
+    Factory factory;
     MockMultisig multisig;
     Counter target;
 
@@ -54,6 +55,8 @@ contract MultisigTest is Test {
         signers[2] = addr2;
 
         uint256 quorum = 2;
+
+        factory = new Factory();
 
         multisig = new MockMultisig(signers, quorum);
         target = new Counter();
@@ -90,6 +93,17 @@ contract MultisigTest is Test {
     /// Tests
     /// -----------------------------------------------------------------------
 
+    function testCreateMultisig() public {
+        address[] memory signers = new address[](3);
+
+        signers[0] = addr0;
+        signers[1] = addr1;
+        signers[2] = addr2;
+
+
+        factory.createMultisig(signers, 2, bytes32(0));
+    }
+
     function testSendEther() public {
         deal(address(multisig), 1 ether);
 
@@ -100,8 +114,7 @@ contract MultisigTest is Test {
         uint256 nonce = 0;
         uint256 quorum = 2;
 
-        bytes32 digest =
-            multisig.computeCallDigest(address(target), value, data, deadline, nonce);
+        bytes32 digest = multisig.computeCallDigest(address(target), value, data, deadline, nonce);
 
         multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
 

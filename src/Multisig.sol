@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "solady/utils/EIP712.sol";
 
+error Initialized();
 error VerificationFailed();
 error InsufficientSigners();
 error ExecutionReverted();
@@ -16,7 +17,7 @@ bytes32 constant DELEGATE_CALL_TYPEHASH =
 
 /// @notice Minimal and gas efficient multi-signature wallet.
 /// @author 0xClandestine
-abstract contract Multisig is EIP712 {
+contract Multisig is EIP712 {
     /// -----------------------------------------------------------------------
     /// Events
     /// -----------------------------------------------------------------------
@@ -36,6 +37,12 @@ abstract contract Multisig is EIP712 {
     /// -----------------------------------------------------------------------
 
     constructor(address[] memory signers, uint256 quorum) {
+        _setSignersAndQuorum(signers, quorum);
+    }
+
+    function initialize(address[] memory signers, uint256 quorum) external virtual {
+        if (signersAndQuorumHash != bytes32(0)) revert Initialized();
+
         _setSignersAndQuorum(signers, quorum);
     }
 
