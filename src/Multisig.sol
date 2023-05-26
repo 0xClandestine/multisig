@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.19;
 
+import "solady/utils/ECDSA.sol";
 import "solady/utils/EIP712.sol";
 
 error Initialized();
@@ -76,10 +77,7 @@ contract Multisig is EIP712 {
 
         for (uint256 i; i < signatures.length; ++i) {
             if (signatures[i].length != 20) {
-                (uint8 v, bytes32 r, bytes32 s) =
-                    abi.decode(signatures[i], (uint8, bytes32, bytes32));
-
-                signers[i] = ecrecover(digest, v, r, s);
+                signers[i] = ECDSA.recover(digest, signatures[i]);
             } else {
                 signers[i] = address(bytes20(signatures[i]));
 
@@ -107,11 +105,15 @@ contract Multisig is EIP712 {
         bytes[] calldata signatures
     ) external payable virtual {
         unchecked {
-            bytes32 digest = _hashTypedData(
-                keccak256(abi.encode(CALL_TYPEHASH, target, value, data, deadline, nonce++))
+            _verify(
+                _hashTypedData(
+                    keccak256(
+                        abi.encode(CALL_TYPEHASH, target, value, keccak256(data), deadline, nonce++)
+                    )
+                ),
+                quorum,
+                signatures
             );
-
-            _verify(digest, quorum, signatures);
 
             (bool success,) = target.call{value: value}(data);
 
@@ -127,11 +129,17 @@ contract Multisig is EIP712 {
         bytes[] calldata signatures
     ) external payable virtual {
         unchecked {
-            bytes32 digest = _hashTypedData(
-                keccak256(abi.encode(DELEGATE_CALL_TYPEHASH, target, data, deadline, nonce++))
+            _verify(
+                _hashTypedData(
+                    keccak256(
+                        abi.encode(
+                            DELEGATE_CALL_TYPEHASH, target, keccak256(data), deadline, nonce++
+                        )
+                    )
+                ),
+                quorum,
+                signatures
             );
-
-            _verify(digest, quorum, signatures);
 
             (bool success,) = target.delegatecall(data);
 
@@ -142,6 +150,10 @@ contract Multisig is EIP712 {
     /// -----------------------------------------------------------------------
     /// EIP712
     /// -----------------------------------------------------------------------
+
+    function DOMAIN_SEPARATOR() external view returns (bytes32) {
+        return _domainSeparator();
+    }
 
     function _domainNameAndVersion()
         internal

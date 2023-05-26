@@ -63,12 +63,7 @@ contract Factory {
         return implementation.predictDeterministicAddress(salt, address(this));
     }
 
-    function predictInitCodeHash(
-        address underlyingAsset,
-        uint96 quoteBondAmount,
-        uint64 quoteDisputeWindow,
-        uint64 emergencyWindow
-    ) external view virtual returns (bytes32) {
+    function predictInitCodeHash() external view virtual returns (bytes32) {
         return implementation.initCodeHash();
     }
 }

@@ -5,29 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Counter} from "./Counter.sol";
 import "../src/Factory.sol";
 
-contract MockMultisig is Multisig {
-    constructor(address[] memory signers, uint256 quorum) Multisig(signers, quorum) {}
-
-    function computeCallDigest(
-        address target,
-        uint256 value,
-        bytes memory data,
-        uint256 deadline,
-        uint256 nonce
-    ) external view returns (bytes32) {
-        return _hashTypedData(
-            keccak256(abi.encode(CALL_TYPEHASH, target, value, data, deadline, nonce))
-        );
-    }
-}
-
 contract MultisigTest is Test {
     /// -----------------------------------------------------------------------
     /// Testing Storage
     /// -----------------------------------------------------------------------
 
     Factory factory;
-    MockMultisig multisig;
+    Multisig multisig;
     Counter target;
 
     address addr0;
@@ -57,8 +41,7 @@ contract MultisigTest is Test {
         uint256 quorum = 2;
 
         factory = new Factory();
-
-        multisig = new MockMultisig(signers, quorum);
+        multisig = new Multisig(signers, quorum);
         target = new Counter();
     }
 
@@ -66,45 +49,74 @@ contract MultisigTest is Test {
     /// Helpers
     /// -----------------------------------------------------------------------
 
-    function getSignatures_3_of_3(bytes32 digest) internal view returns (bytes[] memory sigs) {
-        sigs = new bytes[](3);
+    function getSignatures_3_of_3(bytes32 digest)
+        internal
+        view
+        returns (bytes[] memory signatures)
+    {
+        signatures = new bytes[](3);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk0, digest);
-        sigs[0] = abi.encode(v, r, s);
+        signatures[0] = abi.encodePacked(r, s, v);
 
         (v, r, s) = vm.sign(pk1, digest);
-        sigs[1] = abi.encode(v, r, s);
+        signatures[1] = abi.encodePacked(r, s, v);
 
         (v, r, s) = vm.sign(pk2, digest);
-        sigs[2] = abi.encode(v, r, s);
+        signatures[2] = abi.encodePacked(r, s, v);
     }
 
-    function getSignatures_2_of_3(bytes32 digest) internal view returns (bytes[] memory sigs) {
-        sigs = getSignatures_3_of_3(digest);
-        sigs[0] = abi.encodePacked(addr0);
+    function getSignatures_2_of_3(bytes32 digest)
+        internal
+        view
+        returns (bytes[] memory signatures)
+    {
+        signatures = getSignatures_3_of_3(digest);
+        signatures[0] = abi.encodePacked(addr0);
     }
 
-    function getSignatures_1_of_3(bytes32 digest) internal view returns (bytes[] memory sigs) {
-        sigs = getSignatures_2_of_3(digest);
-        sigs[1] = abi.encodePacked(addr1);
+    function getSignatures_1_of_3(bytes32 digest)
+        internal
+        view
+        returns (bytes[] memory signatures)
+    {
+        signatures = getSignatures_2_of_3(digest);
+        signatures[1] = abi.encodePacked(addr1);
     }
 
     /// -----------------------------------------------------------------------
     /// Tests
     /// -----------------------------------------------------------------------
 
-    function testCreateMultisig() public {
+    function testFactory_CreateMultisig() public {
         address[] memory signers = new address[](3);
 
         signers[0] = addr0;
         signers[1] = addr1;
         signers[2] = addr2;
 
-
         factory.createMultisig(signers, 2, bytes32(0));
     }
 
-    function testSendEther() public {
+    function _computeDigestForCall(
+        address target,
+        uint256 value,
+        bytes memory data,
+        uint256 deadline,
+        uint256 nonce
+    ) internal view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                multisig.DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(CALL_TYPEHASH, target, value, keccak256(data), deadline, nonce)
+                )
+            )
+        );
+    }
+
+    function testCall_CanSendAndReceiveEther() public {
         deal(address(multisig), 1 ether);
 
         bytes memory data;
@@ -114,149 +126,128 @@ contract MultisigTest is Test {
         uint256 nonce = 0;
         uint256 quorum = 2;
 
-        bytes32 digest = multisig.computeCallDigest(address(target), value, data, deadline, nonce);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
 
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+
+        assertEq(address(target).balance, 1 ether);
+    }
+
+    function testCall_CannotReplaySignature() public {
+        deal(address(multisig), 2 ether);
+
+        bytes memory data;
+
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
+
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
+
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
         multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
 
         assertEq(multisig.nonce(), 1);
         assertEq(address(target).balance, 1 ether);
+        assertEq(address(multisig).balance, 1 ether);
     }
 
-    // function testAttemptReplayAttack() public {
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+    function testCall_CannotChangeTarget() public {
+        deal(address(multisig), 1 ether);
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
+        bytes memory data;
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: getSignatures_2_of_3(digest)
-    //     });
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    //     multisig.execute(t);
+        bytes32 digest = _computeDigestForCall(address(0xbad), value, data, deadline, nonce);
 
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+    }
 
-    //     assertEq(target.number(), 420);
-    //     assertEq(multisig.nonce(), 1);
-    // }
+    function testCall_CannotChangeValue() public {
+        deal(address(multisig), 1 ether);
 
-    // function testAttemptDoubleSignatureAttack() public {
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes memory data;
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    //     Signature[] memory signatures = getSignatures_3_of_3(digest);
-    //     signatures[1] = signatures[0];
+        bytes32 digest = _computeDigestForCall(address(target), 0.99 ether, data, deadline, nonce);
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: signatures
-    //     });
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+    }
 
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
-    // }
+    function testCall_CannotChangeData() public {
+        deal(address(multisig), 1 ether);
 
-    // function testAttemptBadTarget() public {
-    //     Counter badTarget = new Counter();
+        bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
 
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
+        bytes32 digest = _computeDigestForCall(address(target), value, "", deadline, nonce);
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(badTarget)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: getSignatures_2_of_3(digest)
-    //     });
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+    }
 
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
-    // }
+    function testCall_CannotChangeNonce() public {
+        deal(address(multisig), 1 ether);
+        
+        bytes memory data;
 
-    // function testAttemptBadValue() public {
-    //     deal(address(multisig), 1 ether);
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
+    }
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 1 ether,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: getSignatures_2_of_3(digest)
-    //     });
+    function testCall_CannotChangeQuorum() public {
+        deal(address(multisig), 1 ether);
+        
+        bytes memory data;
 
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
-    // }
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    // function testAttemptBadPayload() public {
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, 1, data, getSignatures_1_of_3(digest));
+    }
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: new bytes(0),
-    //         quorum: 2,
-    //         signatures: getSignatures_2_of_3(digest)
-    //     });
+    function testCall_CannotCallWithInsufficientSigners() public {
+        deal(address(multisig), 1 ether);
 
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
-    // }
+        bytes memory data;
 
-    // function testAttemptBadNonce() public {
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
+        uint256 value = 1 ether;
+        uint256 deadline = block.timestamp;
+        uint256 nonce = 0;
+        uint256 quorum = 2;
 
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 1);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
 
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: getSignatures_2_of_3(digest)
-    //     });
-
-    //     vm.expectRevert(VerificationFailed.selector);
-    //     multisig.execute(t);
-    // }
-
-    // function testAttemptInsufficientSigners() public {
-    //     bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
-
-    //     bytes32 digest = getDigest(address(target), 0, false, data, 0);
-
-    //     Tx memory t = Tx({
-    //         target: payable(address(target)),
-    //         value: 0,
-    //         delegate: false,
-    //         data: data,
-    //         quorum: 2,
-    //         signatures: getSignatures_1_of_3(digest)
-    //     });
-
-    //     vm.expectRevert(InsufficientSigners.selector);
-    //     multisig.execute(t);
-    // }
+        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        multisig.call(address(target), value, deadline, quorum, data, getSignatures_1_of_3(digest));
+    }
 }
