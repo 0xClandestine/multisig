@@ -7,8 +7,12 @@ error VerificationFailed();
 error InsufficientSigners();
 error ExecutionReverted();
 
-// keccak256("Tx(address target,uint256 value,bool delegate,bytes payload,uint256 deadline,uint256 nonce)");
-bytes32 constant TX_TYPEHASH = 0xafe0c581cad4b7c13925ee4d470d0dba861dfb871cb796cdb711c2f4449bf69d;
+// keccak256("Call(address target,uint256 value,bytes data,uint256 deadline,uint256 nonce)");
+bytes32 constant CALL_TYPEHASH = 0xd4149930d6ff08a361ca75aaedd2a3496dc25f7489b21179b7408a9d78d15b96;
+
+// keccak256("Delegate(address target,bytes data,uint256 deadline,uint256 nonce)");
+bytes32 constant DELEGATE_CALL_TYPEHASH =
+    0x1a6fe3733e53c3d6a401b5c27d307e2a02d06a855ba7175032d8a686c37617d1;
 
 /// @notice Minimal and gas efficient multi-signature wallet.
 /// @author 0xClandestine
@@ -55,65 +59,76 @@ abstract contract Multisig is EIP712 {
     /// Execution
     /// -----------------------------------------------------------------------
 
-    /// @notice Executes a transaction.
-    /// @param target The target address of the transaction.
-    /// @param value The value of the transaction.
-    /// @param delegate A flag indicating whether to delegate the call or not.
-    /// @param deadline The deadline for the transaction.
-    /// @param quorum The quorum required for the transaction.
-    /// @param payload The payload data of the transaction.
-    /// @param signatures The signatures of the signers.
-    /// @dev Signatures must be in order and must be replaced with the relevant signer's address if they're not signing.
-    function execute(
+    function _verify(bytes32 digest, uint256 quorum, bytes[] calldata signatures)
+        internal
+        virtual
+    {
+        address[] memory signers = new address[](signatures.length);
+
+        uint256 totalNonSigners;
+
+        for (uint256 i; i < signatures.length; ++i) {
+            if (signatures[i].length != 20) {
+                (uint8 v, bytes32 r, bytes32 s) =
+                    abi.decode(signatures[i], (uint8, bytes32, bytes32));
+
+                signers[i] = ecrecover(digest, v, r, s);
+            } else {
+                signers[i] = address(bytes20(signatures[i]));
+
+                ++totalNonSigners;
+            }
+        }
+
+        // Assert the list of signers and quorum are correct.
+        if (keccak256(abi.encodePacked(signers, quorum)) != signersAndQuorumHash) {
+            revert VerificationFailed();
+        }
+
+        // Assert m-of-n of the signers have signed.
+        if (signatures.length - totalNonSigners < quorum) {
+            revert InsufficientSigners();
+        }
+    }
+
+    function call(
         address target,
         uint256 value,
-        bool delegate,
         uint256 deadline,
         uint256 quorum,
-        bytes calldata payload,
+        bytes calldata data,
         bytes[] calldata signatures
     ) external payable virtual {
         unchecked {
-            address[] memory signers = new address[](signatures.length);
-
             bytes32 digest = _hashTypedData(
-                keccak256(
-                    abi.encode(TX_TYPEHASH, target, value, delegate, payload, deadline, nonce++)
-                )
+                keccak256(abi.encode(CALL_TYPEHASH, target, value, data, deadline, nonce++))
             );
 
-            uint256 totalNonSigners;
+            _verify(digest, quorum, signatures);
 
-            for (uint256 i; i < signatures.length; ++i) {
-                if (signatures[i].length != 20) {
-                    (uint8 v, bytes32 r, bytes32 s) =
-                        abi.decode(signatures[i], (uint8, bytes32, bytes32));
+            (bool success,) = target.call{value: value}(data);
 
-                    signers[i] = ecrecover(digest, v, r, s);
-                } else {
-                    signers[i] = address(bytes20(signatures[i]));
+            if (!success) revert ExecutionReverted();
+        }
+    }
 
-                    ++totalNonSigners;
-                }
-            }
+    function delegatecall(
+        address target,
+        uint256 deadline,
+        uint256 quorum,
+        bytes calldata data,
+        bytes[] calldata signatures
+    ) external payable virtual {
+        unchecked {
+            bytes32 digest = _hashTypedData(
+                keccak256(abi.encode(DELEGATE_CALL_TYPEHASH, target, data, deadline, nonce++))
+            );
 
-            // Assert the recovered list of signers and quorum are correct.
-            if (keccak256(abi.encodePacked(signers, quorum)) != signersAndQuorumHash) {
-                revert VerificationFailed();
-            }
+            _verify(digest, quorum, signatures);
 
-            // Assert m-of-n of the signers have signed.
-            if (signatures.length - totalNonSigners < quorum) {
-                revert InsufficientSigners();
-            }
+            (bool success,) = target.delegatecall(data);
 
-            (bool success,) =
-                delegate ? target.delegatecall(payload) : target.call{value: value}(payload);
-
-            // Assert the transaction succeeded.
-            if (!success) {
-                revert ExecutionReverted();
-            }
+            if (!success) revert ExecutionReverted();
         }
     }
 
