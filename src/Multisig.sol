@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 import "solady/utils/EIP712.sol";
-import "solady/utils/ECDSA.sol";
 
 error VerificationFailed();
 error InsufficientSigners();
@@ -49,9 +48,7 @@ abstract contract Multisig is EIP712 {
     function setSignersAndQuorum(address[] memory signers, uint256 quorum) external virtual {
         if (msg.sender != address(this)) revert VerificationFailed();
 
-        signersAndQuorumHash = keccak256(abi.encodePacked(signers, quorum));
-
-        emit SignersAndQuorumSet(signers, quorum);
+        _setSignersAndQuorum(signers, quorum);
     }
 
     /// -----------------------------------------------------------------------
