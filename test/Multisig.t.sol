@@ -23,6 +23,11 @@ contract MultisigTest is Test {
     address addr2;
     uint256 pk2;
 
+    uint256 constant value = 1 ether;
+    uint256 constant deadline = 0;
+    uint256 constant nonce = 0;
+    uint256 constant quorum = 2;
+
     /// -----------------------------------------------------------------------
     /// Setup
     /// -----------------------------------------------------------------------
@@ -121,11 +126,6 @@ contract MultisigTest is Test {
 
         bytes memory data;
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
-
         bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
 
         multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
@@ -137,11 +137,6 @@ contract MultisigTest is Test {
         deal(address(multisig), 2 ether);
 
         bytes memory data;
-
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
 
         bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
 
@@ -160,11 +155,6 @@ contract MultisigTest is Test {
 
         bytes memory data;
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
-
         bytes32 digest = _computeDigestForCall(address(0xbad), value, data, deadline, nonce);
 
         vm.expectRevert(0x439cc0cd); // VerificationFailed
@@ -175,11 +165,6 @@ contract MultisigTest is Test {
         deal(address(multisig), 1 ether);
 
         bytes memory data;
-
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
 
         bytes32 digest = _computeDigestForCall(address(target), 0.99 ether, data, deadline, nonce);
 
@@ -192,11 +177,6 @@ contract MultisigTest is Test {
 
         bytes memory data = abi.encodeWithSelector(target.setNumber.selector, 420);
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
-
         bytes32 digest = _computeDigestForCall(address(target), value, "", deadline, nonce);
 
         vm.expectRevert(0x439cc0cd); // VerificationFailed
@@ -208,12 +188,7 @@ contract MultisigTest is Test {
         
         bytes memory data;
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
-
-        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce + 1);
 
         vm.expectRevert(0x439cc0cd); // VerificationFailed
         multisig.call(address(target), value, deadline, quorum, data, getSignatures_2_of_3(digest));
@@ -224,12 +199,7 @@ contract MultisigTest is Test {
         
         bytes memory data;
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
-
-        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
 
         vm.expectRevert(0x439cc0cd); // VerificationFailed
         multisig.call(address(target), value, deadline, 1, data, getSignatures_1_of_3(digest));
@@ -240,14 +210,9 @@ contract MultisigTest is Test {
 
         bytes memory data;
 
-        uint256 value = 1 ether;
-        uint256 deadline = block.timestamp;
-        uint256 nonce = 0;
-        uint256 quorum = 2;
+        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, nonce);
 
-        bytes32 digest = _computeDigestForCall(address(target), value, data, deadline, ++nonce);
-
-        vm.expectRevert(0x439cc0cd); // VerificationFailed
+        vm.expectRevert(0xc2ee9b9e); // InsufficientSigners
         multisig.call(address(target), value, deadline, quorum, data, getSignatures_1_of_3(digest));
     }
 }
